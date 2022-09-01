@@ -1,5 +1,11 @@
 # Проект 3
 
+/src/dags/code_sprint3.py - dag file 
+
+
+**Дополнительные SQL скрипты:**
+
+
 /migrations/1_change_uol.sql - script to add column "status" to the table staging.user_order_log
 
 /migrations/2_change_f_sales.sql - script to add column "status" to mart.f_sales
@@ -22,4 +28,4 @@
 
 
 
-/src/dags/code_sprint3.py - dag file 
+
