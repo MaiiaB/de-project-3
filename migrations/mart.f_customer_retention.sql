@@ -9,7 +9,7 @@ SELECT dc.week_of_year as period_id,
        SUM(payment_amount) as payment_amount
 from staging.user_order_log uol
 left join mart.d_calendar dc
--- in case we need to analyse data over different years, CHANGE datatype to INT (!) while creating the table:
+-- in case we need to analyse data over different years, use this code and CHANGE datatype to VARCHAR (!) while creating the table:
 
 --(SELECT date_actual, ((regexp_split_to_array(week_of_year_iso , E'\\-+'))[1] || 
 --                                                                         '-' || 
