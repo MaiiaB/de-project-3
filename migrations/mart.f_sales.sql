@@ -1,3 +1,7 @@
+-- добавка для идемпотентности
+DELETE FROM mart.f_sales WHERE date_id = (SELECT date_id from mart.d_calendar WHERE date_actual='{{ds}}');
+
+
 insert into mart.f_sales (date_id, item_id, customer_id, city_id, quantity, payment_amount, "status") --changed
 select dc.date_id, 
        item_id, 
