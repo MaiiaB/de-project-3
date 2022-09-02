@@ -79,29 +79,6 @@ def get_increment(date, ti):
     print(f'increment_id={increment_id}')
 
 
-# Additional function for part 3
-def removing_data_from_staging(date, pg_table, pg_schema, ti):
-
-    # connecting to database
-    psql_conn = BaseHook.get_connection('pg_connection')
-    conn = psycopg2.connect(f"dbname='de' port='{psql_conn.port}' user='{psql_conn.login}' host='{psql_conn.host}' password='{psql_conn.password}'")
-    cur = conn.cursor()
-    # checking number of rows before removal of the data for a given day
-    cur.execute(f"SELECT COUNT(*) from {pg_schema}.{pg_table};")
-    results = cur.fetchall()
-    print("Number of lines before removal: ", results)
-    # removal of data for a given day
-    cur.execute(f"DELETE FROM {pg_schema}.{pg_table} WHERE date_time = '{str(date)}'::timestamp;")
-    conn.commit()
-    # checking number of rows after removal of the data for a given day
-    cur.execute(f"select count(*) from {pg_schema}.{pg_table};")
-    results = cur.fetchall()
-    print("Number of lines after removal: ", results)
-
-    cur.close()
-    conn.close()
-
-
 def upload_data_to_staging(filename, date, pg_table, pg_schema, ti):
     increment_id = ti.xcom_pull(key='increment_id')
     s3_filename = f'https://storage.yandexcloud.net/s3-sprint3/cohort_{cohort}/{nickname}/project/{increment_id}/{filename}'
@@ -111,40 +88,42 @@ def upload_data_to_staging(filename, date, pg_table, pg_schema, ti):
     response = requests.get(s3_filename)
     open(f"{local_filename}", "wb").write(response.content)
 
-    df = pd.read_csv(local_filename)
-    print(df.head())
-
-    df.drop_duplicates(subset=['id'], inplace=True)
-    df.drop(["id"], axis=1, inplace=True) # addition to avoid error (id will be atomatically added anyway)
-    print(df.head())
+    df = pd.read_csv(local_filename, index_col=0)
+    df.drop_duplicates(inplace=True)
 
     print("How many rows will be added: ", df.shape)
 
-    postgres_hook = PostgresHook(postgres_conn_id)
+    postgres_hook = PostgresHook(postgres_conn_id) 
+
+    # Addition for part 3
+    query = f"DELETE FROM {pg_schema}.{pg_table} WHERE date_time = '{str(date)}'::timestamp;"
+    postgres_hook.run(sql=query, autocommit=True) 
+
     engine = postgres_hook.get_sqlalchemy_engine()
     df.to_sql(pg_table, engine, schema=pg_schema, if_exists='append', index=False)
-
 
 args = {
     "owner": "student",
     'email': ['student@example.com'],
     'email_on_failure': False,
     'email_on_retry': False,
-    'retries': 0
+    'retries': 2
 }
 
 
 business_dt = '{{ ds }}'
 
+dimension_tasks = list()    
 
 with DAG(
-        'Maiia_final_customer_retention',
+        'Maiia_final_customer_retention_12',
         default_args=args,
         description='Provide default dag for sprint3',
         catchup=True,
- #       template_searchpath='/lessons/dags/sql/',  # this is needed, otherwise it will not find the sql files
+ #       template_searchpath='/lessons/dags/sql/',  # may be needed to find the sql files
         start_date=datetime.today() - timedelta(days=8),
         end_date=datetime.today() - timedelta(days=1),
+        max_active_runs = 1 # to ensure that only one task is running at a time
 ) as dag:
     generate_report = PythonOperator(
         task_id='generate_report',
@@ -159,13 +138,6 @@ with DAG(
         python_callable=get_increment,
         op_kwargs={'date': business_dt})
 
-    removing_data_for_this_day = PythonOperator(   # Addition for part 3
-        task_id='removing_data_for_this_day',
-        python_callable=removing_data_from_staging,
-        op_kwargs={'date': business_dt,
-                   'pg_table': 'user_order_log',
-                   'pg_schema': 'staging'})
-
     upload_user_order_inc = PythonOperator(
         task_id='upload_user_order_inc',
         python_callable=upload_data_to_staging,
@@ -174,20 +146,14 @@ with DAG(
                    'pg_table': 'user_order_log',
                    'pg_schema': 'staging'})
 
-    update_d_item_table = PostgresOperator(
-        task_id='update_d_item',
-        postgres_conn_id=postgres_conn_id,
-        sql="sql/mart.d_item.sql")
-
-    update_d_customer_table = PostgresOperator(
-        task_id='update_d_customer',
-        postgres_conn_id=postgres_conn_id,
-        sql="sql/mart.d_customer.sql")
-
-    update_d_city_table = PostgresOperator(
-        task_id='update_d_city',
-        postgres_conn_id=postgres_conn_id,
-        sql="sql/mart.d_city.sql")
+    for i in ['d_city', 'd_item', 'd_customer']:   
+        dimension_tasks.append(PostgresOperator(
+            task_id = f'update_{i}',
+            postgres_conn_id = 'postgresql_de',
+            sql = f'sql/mart.{i}.sql',
+            dag = dag
+        )
+    ) 
 
     update_f_sales = PostgresOperator(
         task_id='update_f_sales',
@@ -204,9 +170,8 @@ with DAG(
             generate_report
             >> get_report
             >> get_increment
-            >> removing_data_for_this_day # addition for part 3
             >> upload_user_order_inc
-            >> [update_d_item_table, update_d_city_table, update_d_customer_table]
+            >> dimension_tasks
             >> update_f_sales 
             >> update_f_customer_retention # addition for part 2
     )
