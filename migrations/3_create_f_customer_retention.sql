@@ -11,8 +11,7 @@ CREATE TABLE mart.f_customer_retention(
         item_id BIGINT,
         new_customers_revenue NUMERIC(14,2),
         returning_customers_revenue NUMERIC(14,2),
-        customers_refunded INT,
-        PRIMARY KEY (period_id, item_id)
-        );
-        
+        customers_refunded INT, 
+        PRIMARY KEY (period_id, item_id))
+        ;
 
