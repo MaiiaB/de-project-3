@@ -1,5 +1,7 @@
 --DROP TABLE IF EXISTS mart.f_customer_retention;
 
+-- corrected query: 
+
 CREATE TABLE mart.f_customer_retention(
         new_customers_count INT, 
         returning_customers_count INT,
